@@ -16,7 +16,7 @@ Proyecto construido exclusivamente en:
 ## Lo pendiente
 Repositorio remoto independiente creado: https://github.com/barbozagabrielorlando-lab/conteo-universidad. El código se guarda mediante la interfaz de GitHub.
 El repositorio local está inicializado sin commits: este entorno rechazó crear .git/index.lock aun con el permiso concedido. Para una copia local con historial, clonar el remoto en una carpeta nueva desde una terminal propia. El ZIP contiene el código y no los metadatos Git.
-El formulario Supabase nuevo está preparado con nombre conteo-universidad. Su creación requiere que el titular defina la contraseña de la base personalmente. Proyecto real y despliegue público pendientes.
+Supabase fmzjdlmluloonbcjmweq configurado: cinco tablas, RLS en todas, sin acceso anónimo a controles ni escrituras directas fiscales. Cinco tablas habilitadas en Realtime. Registro público deshabilitado. GitHub Actions run 37539150081 exitoso con 9 pruebas aprobadas. Sitio publicado y acceso real verificado: https://barbozagabrielorlando-lab.github.io/conteo-universidad/. Pendientes: contraseña del primer administrador, activar su perfil y definir mesas reales.
 No se verificó Auth, correo ni Realtime contra Supabase real. No usar la demostración como sistema de una elección real.
 
 ## Prueba previa a la elección (Supabase nuevo)
