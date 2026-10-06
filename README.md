@@ -57,21 +57,20 @@ update public.electoral_tables set active=false where id=25;
 Por ahora la gestión de usuarios y mesas se realiza desde Supabase, no desde la interfaz. Evitar cambios directos en controls/audit_log: usar las funciones de corrección.
 
 ## GitHub y Pages independientes
-El repositorio Git local ya está inicializado con rama main. Falta crear el remoto en la cuenta del titular.
-1. Iniciar sesión en GitHub. Crear **conteo-universidad**, sin importar ni vincular repositorios existentes. No precrear README.
-2. En este proyecto:
+Repositorio independiente creado: [barbozagabrielorlando-lab/conteo-universidad](https://github.com/barbozagabrielorlando-lab/conteo-universidad). El código se guarda desde la interfaz de GitHub porque el entorno local bloquea la escritura de metadatos Git.
+
+Para obtener una copia local versionada en una carpeta nueva:
 ```
-git add .
-git commit -m "Crear conteo universitario independiente"
-git remote add origin https://github.com/TU-USUARIO/conteo-universidad.git
-git push -u origin main
+git clone https://github.com/barbozagabrielorlando-lab/conteo-universidad.git
+cd conteo-universidad
+npm ci
 ```
-El entorno de construcción bloqueó la escritura de metadatos Git: el repositorio está inicializado, pero el primer commit queda pendiente. Ejecutar esos pasos desde una terminal propia. Si trabajás desde el ZIP, ejecutar antes `git init --initial-branch=main`, porque la copia descargable no incluye la carpeta .git.
-3. Settings > Secrets and variables > Actions > Variables: agregar `VITE_SUPABASE_URL` y `VITE_SUPABASE_PUBLISHABLE_KEY` del proyecto nuevo. Ambas son públicas; su seguridad depende de RLS, roles y funciones.
-4. Settings > Pages > Source: GitHub Actions. El workflow prueba, compila y publica. Falla si faltan las variables: nunca publica una demo accidentalmente.
-5. El sitio usa base `/conteo-universidad/` y no requiere rutas del servidor. Si cambia el nombre del repositorio, ajustar vite.config.mjs.
-6. GitHub Pages sirve los archivos públicamente; los **datos y operaciones** permanecen protegidos por Supabase. Verificar disponibilidad de Pages según el plan/tipo de repositorio antes de elegir visibilidad.
-7. Probar usuarios reales fiscal/admin y sesión anónima antes de utilizarlo en una jornada real.
+
+1. Settings > Secrets and variables > Actions > Variables: agregar `VITE_SUPABASE_URL` y `VITE_SUPABASE_PUBLISHABLE_KEY` del proyecto Supabase nuevo. Ambas son públicas; su seguridad depende de RLS, roles y funciones.
+2. Settings > Pages > Source: GitHub Actions. El workflow prueba, compila y publica. Falla si faltan las variables: nunca publica una demo accidentalmente.
+3. El sitio usa base `/conteo-universidad/` y no requiere rutas del servidor. Si cambia el nombre del repositorio, ajustar vite.config.mjs.
+4. GitHub Pages sirve los archivos públicamente; los **datos y operaciones** permanecen protegidos por Supabase.
+5. Probar usuarios reales fiscal/admin y sesión anónima antes de utilizarlo en una jornada real.
 
 ## Modelo y confiabilidad
 - `controls`: fuente de verdad. `votes` es columna generada, no un valor aceptado del navegador.
