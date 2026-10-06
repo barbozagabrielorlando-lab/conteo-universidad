@@ -1,6 +1,13 @@
 # Conteo Universidad
 Aplicación independiente para una estimación interna de votos universitarios a partir del consumo de boletas. **No representa el escrutinio oficial.** Proyecto nuevo: no utiliza archivos, usuarios, configuración, datos ni infraestructura de la maratón.
 
+## Estado del despliegue · 6 de octubre de 2026
+- Aplicación publicada: https://barbozagabrielorlando-lab.github.io/conteo-universidad/
+- Supabase independiente: fmzjdlmluloonbcjmweq. Migración instalada, cinco tablas con RLS verificadas. No volver a ejecutar la migración inicial en este proyecto.
+- Registro público deshabilitado; Site URL y variables de GitHub configuradas.
+- Pendiente: contraseña personal del primer administrador, habilitar su perfil, definir mesas reales y asignaciones.
+- Probar Auth y Realtime con usuarios reales antes de la jornada.
+
 ## Qué incluye
 - Acceso por correo y contraseña Supabase; cuentas habilitadas explícitamente por administración.
 - Fiscal: mesas asignadas, botones grandes 0–5, cálculo 5-restantes, confirmación de mesa y reposición hasta cinco.
