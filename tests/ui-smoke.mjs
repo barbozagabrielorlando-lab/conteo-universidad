@@ -1,0 +1,46 @@
+import { chromium } from '@playwright/test';
+import { mkdirSync } from 'node:fs';
+const out=process.env.CONTEO_SCREENSHOTS;
+if(out)mkdirSync(out,{recursive:true});
+const browser=await chromium.launch({channel:'msedge',headless:true});
+const errors=[];
+try{
+ const page=await browser.newPage({viewport:{width:1440,height:1000}});
+ page.on('pageerror',e=>errors.push(e.message));
+ await page.goto(process.env.CONTEO_URL??'http://127.0.0.1:4173/');
+ await page.getByRole('button',{name:'Explorar demostración'}).click();
+ await page.getByRole('heading',{name:'Panel general'}).waitFor();
+ if(out)await page.screenshot({path:out+'/dashboard.png',fullPage:true});
+ await page.getByRole('button',{name:'Registrar control',exact:true}).click();
+ await page.locator('#table').selectOption('7');
+ await page.getByRole('button',{name:'3',exact:true}).click();
+ await page.getByRole('button',{name:/Revisar y continuar/}).click();
+ if(await page.getByRole('button',{name:'Confirmar y registrar'}).isEnabled())throw new Error('Confirmación habilitada sin reposición');
+ await page.locator('#replenish').check();
+ await page.getByRole('button',{name:'Confirmar y registrar'}).click();
+ await page.getByRole('status').filter({hasText:'Control registrado'}).waitFor();
+ if(!await page.getByRole('status').textContent().then(s=>s.includes('Acumulado: 2')))throw new Error('Acumulado incorrecto');
+ await page.getByRole('button',{name:'Historial de controles'}).click();
+ await page.getByRole('button',{name:'Corregir / anular'}).first().click();
+ await page.locator('dialog').getByRole('button',{name:'1',exact:true}).click();
+ await page.locator('#reason').fill('Prueba de corrección de cantidad');
+ await page.getByRole('button',{name:'Confirmar cambio'}).click();
+ await page.getByText('Corregido',{exact:true}).waitFor();
+ await page.getByRole('button',{name:'Corregir / anular'}).first().click();
+ await page.locator('#revision-kind').selectOption('void');
+ await page.locator('#reason').fill('Prueba de anulación de control');
+ await page.getByRole('button',{name:'Confirmar cambio'}).click();
+ await page.getByText('Anulado',{exact:true}).waitFor();
+ await page.getByRole('button',{name:'Panel general',exact:true}).click();
+ await page.setViewportSize({width:390,height:844});
+ if(await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth))throw new Error('Desborde horizontal móvil del dashboard');
+ if(out)await page.screenshot({path:out+'/dashboard-movil.png',fullPage:true});
+ await page.getByRole('button',{name:'Registrar control',exact:true}).click();
+ await page.locator('#table').selectOption('7');
+ await page.getByRole('button',{name:'3',exact:true}).click();
+ if(await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth))throw new Error('Desborde horizontal móvil de carga');
+ for(const b of await page.locator('.number').all()){const box=await b.boundingBox();if(box.height<48||box.width<48)throw new Error('Botón pequeño');}
+ if(out)await page.screenshot({path:out+'/carga-movil.png',fullPage:true});
+ if(errors.length)throw new Error(errors.join('\n'));
+ console.log('OK: desktop, mobile, confirmation, registration, correction, void, no overflow, large buttons; no browser errors.');
+}finally{await browser.close();}
