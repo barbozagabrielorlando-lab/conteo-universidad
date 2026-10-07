@@ -48,11 +48,11 @@ function login(){
 }
 function loadView(){
  const total=totals.find(t=>t.table_id===selected);
- return '<div class="page-head"><div><p class="eyebrow">CARGA DE LA MESA</p><h1>Registrar control</h1><p>Contá las boletas disponibles antes de reponerlas.</p></div><span class="pill">Paso 1 de 2</span></div>'+
+ return '<div class="page-head"><div><p class="eyebrow">CARGA DE LA MESA</p><h1>Registrar control</h1><p>Contá las boletas disponibles antes de reponerlas.</p></div><span class="pill">Carga directa</span></div>'+
  '<div class="load-grid"><section class="card"><label for="table">1. Seleccioná tu mesa</label><select id="table" '+(busy||pending?'disabled':'')+'><option value="0">Elegir una mesa</option>'+tables.filter(t=>t.active).map(t=>'<option value="'+t.id+'" '+(t.id===selected?'selected':'')+'>Mesa '+esc(t.label)+'</option>').join('')+'</select>'+
  '<h2 class="question">2. ¿Cuántos votos estimás en este control?</h2><p>Elegí los votos nuevos de este control, entre 0 y 5. No ingreses el acumulado.</p>'+buttons(remaining)+
  '<div class="estimate"><span>Votos estimados en este control</span><strong>'+(remaining===null?'—':'+'+votesFor(remaining))+'</strong></div>'+
- (pending?'<div class="alert">Hay un envío pendiente de verificar. Reintentá el mismo control: no se duplicará.</div><button id="retry" class="primary" '+(busy?'disabled':'')+'>'+(busy?'Verificando…':'Verificar / reintentar envío')+'</button>':'<button id="review" class="primary" '+(!selected||remaining===null||busy?'disabled':'')+'>Revisar y continuar <span aria-hidden="true">→</span></button>')+'</section>'+
+ (pending?'<div class="alert">Hay un envío pendiente de verificar. Reintentá el mismo control: no se duplicará.</div><button id="retry" class="primary" '+(busy?'disabled':'')+'>'+(busy?'Verificando…':'Verificar / reintentar envío')+'</button>':'<button id="review" class="primary" '+(!selected||remaining===null||busy?'disabled':'')+'>Registrar control</button>')+'</section>'+
  '<section class="card table-card"><p class="eyebrow">TU MESA</p><h2>'+(selected?'Mesa '+esc(tables.find(t=>t.id===selected)?.label):'Seleccioná una mesa')+'</h2><div class="big-total">'+(total?.total??'—')+'</div><p>votos estimados acumulados</p><hr><p><b>Último control</b><br>'+time(total?.last_control??'')+'</p><div class="hint">Después de cada control, las boletas deben volver a ser <b>5</b>. Cada envío suma votos nuevos.</div></section></div>';
 }
 function historyView(){
@@ -80,10 +80,11 @@ function dashboard(){
 }
 function showModal(html:string){const holder=root.querySelector('#modal')!;holder.innerHTML='<dialog aria-labelledby="dialog-title">'+html+'</dialog>';const d=holder.querySelector('dialog')!;d.showModal();d.querySelector<HTMLInputElement>('input,button')?.focus();d.addEventListener('cancel',e=>{if(busy)e.preventDefault();});return d;}
 function confirmControl(){
- if(!selected||remaining===null||busy)return;
- const d=showModal('<h2 id="dialog-title">Confirmá este control</h2><p class="modal-table">Mesa '+esc(tables.find(t=>t.id===selected)?.label)+'</p><div class="confirmation"><span>Votos nuevos de este control</span><strong>+'+votesFor(remaining)+' votos estimados</strong></div><label class="check"><input id="replenish" type="checkbox"> Confirmo que esta cantidad corresponde a votos nuevos de este control, no al acumulado.</label><p>Este envío se sumará a los controles anteriores.</p><div class="actions"><button class="secondary" id="back">Volver</button><button class="primary" id="send" disabled>Confirmar y registrar</button></div>');
- const send=d.querySelector<HTMLButtonElement>('#send')!;d.querySelector('#replenish')!.addEventListener('change',e=>send.disabled=!(e.target as HTMLInputElement).checked);d.querySelector('#back')!.addEventListener('click',()=>d.close());
- send.onclick=()=>{const next={table:selected,remaining:remaining!,request:crypto.randomUUID()};try{if(!demo)localStorage.setItem(storageKey(),JSON.stringify(next));}catch{d.insertAdjacentHTML('beforeend','<p role="alert">El navegador no permite guardar el envío pendiente. Habilitá el almacenamiento local antes de registrar.</p>');return;}pending=next;d.close();void sendControl();};
+ if(!selected||remaining===null||busy||pending)return;
+ const next={table:selected,remaining:remaining!,request:crypto.randomUUID()};
+ try{if(!demo)localStorage.setItem(storageKey(),JSON.stringify(next));}
+ catch{error='El navegador no permite guardar el envío pendiente. Habilitá el almacenamiento local antes de registrar.';render();return;}
+ pending=next;void sendControl();
 }
 async function sendControl(){
  if(!pending||busy)return;busy=true;error='';notice='';render();const p={...pending};
