@@ -11,28 +11,30 @@ const time=(s:string)=>s?new Date(s).toLocaleString('es-AR',{timeZone:'America/A
 let profile:Profile|null=null,tables:Table[]=[],controls:Control[]=[],audits:Audit[]=[],profiles:Profile[]=[];
 type Total={table_id:number;total:number;reported:boolean;last_control:string|null};
 let totals:Total[]=[],view='load',selected=0,remaining:number|null=null,busy=false,error='',notice='',sync='Conectando',lastSync='',demo=false,loading=false;
-type Pending={table:number;remaining:number;request:string};
+type Pending={table:number;remaining:number;request:string;entries?:{remaining:number;request:string}[]};
+let rows:(number|null)[]=Array(6).fill(null);
 let pending:Pending|null=null;
 const storageKey=()=> 'conteo-pending-'+profile!.id;
 let channel:ReturnType<SupabaseClient['channel']>|null=null;
 let generation=0;
 let refreshTimer:ReturnType<typeof setTimeout>|undefined;
 const brand='<a class="brand" href="#inicio"><span class="brand-icon">U</span><span>UPAU</span></a>';
-const buttons=(value:number|null)=>'<div class="numbers" role="group" aria-label="Votos estimados">'+[0,1,2,3,4,5].map(n=>'<button type="button" class="number '+(value===5-n?'chosen':'')+'" aria-pressed="'+(value===5-n)+'" data-number="'+(5-n)+'" '+(busy||pending?'disabled':'')+'>'+n+'</button>').join('')+'</div>';
+const buttons=(value:number|null)=>'<div class="numbers" role="group" aria-label="Votos estimados">'+[0,1,2,3,4,5,6,7,8,9,10].map(n=>'<button type="button" class="number '+(value===5-n?'chosen':'')+'" aria-pressed="'+(value===5-n)+'" data-number="'+(5-n)+'" '+(busy||pending?'disabled':'')+'>'+n+'</button>').join('')+'</div>';
 const person=(id:string)=>profiles.find(p=>p.id===id)?.display_name??(id===profile?.id?profile.display_name:id.slice(0,8));
 function render(){
  if(!profile){login();return;}
  const admin=profile.role==='admin';
  if(!admin&&view==='dashboard')view='load';
  root.innerHTML='<header>'+brand+'<div class="user">'+esc(profile.display_name)+' <span class="role">'+(admin?'Administración':'Fiscal')+'</span><button id="logout" class="text-button">Salir</button></div></header>'+
- '<div class="disclaimer">'+(demo?'<strong>DEMOSTRACIÓN · Datos ficticios · No se envía información.</strong>':'Estimación interna basada en consumo de boletas. No es el escrutinio oficial.')+'</div>'+
- '<div class="layout"><aside><p class="eyebrow">JORNADA ELECTORAL</p><nav>'+[['load','Registrar control'],['history','Historial de controles'],...(admin?[['dashboard','Panel general']]:[])].map(([id,label])=>'<button data-view="'+id+'" class="'+(view===id?'active':'')+'">'+label+'</button>').join('')+'</nav><div class="side-note"><span aria-hidden="true">🐱</span><b>Cada control cuenta.</b><p>Revisá, registrá y reponé las boletas hasta llegar a cinco.</p></div></aside><main>'+
+ '<div class="disclaimer">'+(demo?'<strong>DEMOSTRACIÓN · Datos ficticios · No se envía información.</strong>':'Estimación provisoria interna. No es el escrutinio oficial.')+'</div>'+
+ '<div class="layout"><aside><p class="eyebrow">JORNADA ELECTORAL</p><nav>'+[['load','Registrar control'],['history','Historial de controles'],...(admin?[['dashboard','Panel general']]:[])].map(([id,label])=>'<button data-view="'+id+'" class="'+(view===id?'active':'')+'">'+label+'</button>').join('')+'</nav><div class="side-note"><span aria-hidden="true">🐱</span><b>Cada control cuenta.</b><p>Revisá las cantidades y registrá los votos nuevos.</p></div></aside><main>'+
  (error?'<div class="alert" role="alert">'+esc(error)+'</div>':'')+(notice?'<div class="success" role="status">'+esc(notice)+'</div>':'')+
  (view==='load'?loadView():view==='history'?historyView():dashboard())+'</main></div><footer><span>Conteo provisorio · uso interno</span><span id="sync">'+esc(sync)+(lastSync?' · '+time(lastSync):'')+'</span></footer><div id="modal"></div>';
  root.querySelector('#logout')!.addEventListener('click',async()=>{if(busy)return;generation++;if(channel&&db)await db.removeChannel(channel);channel=null;if(db)await db.auth.signOut();profile=null;tables=[];controls=[];audits=[];totals=[];pending=null;notice='';error='';demo=false;render();});
  root.querySelectorAll<HTMLButtonElement>('[data-view]').forEach(b=>b.onclick=()=>{if(busy)return;view=b.dataset.view!;error='';render();});
  root.querySelectorAll<HTMLButtonElement>('[data-number]').forEach(b=>b.onclick=()=>{remaining=Number(b.dataset.number);render();});
- root.querySelector<HTMLSelectElement>('#table')?.addEventListener('change',e=>{selected=Number((e.target as HTMLSelectElement).value);remaining=null;notice='';render();});
+ root.querySelector<HTMLSelectElement>('#table')?.addEventListener('change',e=>{selected=Number((e.target as HTMLSelectElement).value);remaining=null;rows=Array(6).fill(null);notice='';render();});
+ root.querySelectorAll<HTMLSelectElement>('[data-row]').forEach(el=>el.onchange=()=>{rows[Number(el.dataset.row)]=el.value===''?null:Number(el.value);render();});
  root.querySelector('#review')?.addEventListener('click',confirmControl);
  root.querySelector('#retry')?.addEventListener('click',()=>sendControl());
  root.querySelectorAll<HTMLButtonElement>('[data-revise]').forEach(b=>b.onclick=()=>reviseDialog(b.dataset.revise!));
@@ -48,19 +50,19 @@ function login(){
 }
 function loadView(){
  const total=totals.find(t=>t.table_id===selected);
- return '<div class="page-head"><div><p class="eyebrow">CARGA DE LA MESA</p><h1>Registrar control</h1><p>Contá las boletas disponibles antes de reponerlas.</p></div><span class="pill">Carga directa</span></div>'+
+ return '<div class="page-head"><div><p class="eyebrow">CARGA DE LA MESA</p><h1>Registrar control</h1><p>Ingresá hasta seis cantidades nuevas para tu mesa.</p></div><span class="pill">Carga directa</span></div>'+
  '<div class="load-grid"><section class="card"><label for="table">1. Seleccioná tu mesa</label><select id="table" '+(busy||pending?'disabled':'')+'><option value="0">Elegir una mesa</option>'+tables.filter(t=>t.active).map(t=>'<option value="'+t.id+'" '+(t.id===selected?'selected':'')+'>Mesa '+esc(t.label)+'</option>').join('')+'</select>'+
- '<h2 class="question">2. ¿Cuántos votos estimás en este control?</h2><p>Elegí los votos nuevos de este control, entre 0 y 5. No ingreses el acumulado.</p>'+buttons(remaining)+
- '<div class="estimate"><span>Votos estimados en este control</span><strong>'+(remaining===null?'—':'+'+votesFor(remaining))+'</strong></div>'+
- (pending?'<div class="alert">Hay un envío pendiente de verificar. Reintentá el mismo control: no se duplicará.</div><button id="retry" class="primary" '+(busy?'disabled':'')+'>'+(busy?'Verificando…':'Verificar / reintentar envío')+'</button>':'<button id="review" class="primary" '+(!selected||remaining===null||busy?'disabled':'')+'>Registrar control</button>')+'</section>'+
- '<section class="card table-card"><p class="eyebrow">TU MESA</p><h2>'+(selected?'Mesa '+esc(tables.find(t=>t.id===selected)?.label):'Seleccioná una mesa')+'</h2><div class="big-total">'+(total?.total??'—')+'</div><p>votos estimados acumulados</p><hr><p><b>Último control</b><br>'+time(total?.last_control??'')+'</p><div class="hint">Después de cada control, las boletas deben volver a ser <b>5</b>. Cada envío suma votos nuevos.</div></section></div>';
+ '<h2 class="question">2. Votos estimados por fila</h2><p>Cada fila suma votos nuevos. Dejá vacías las filas sin datos; 0 registra un control sin votos.</p>'+rows.map((v,i)=>'<label>Fila '+(i+1)+'<select data-row="'+i+'" '+(busy||pending?'disabled':'')+'><option value="">Sin cargar</option>'+Array.from({length:11},(_,n)=>'<option value="'+n+'" '+(v===n?'selected':'')+'>'+n+'</option>').join('')+'</select>'+(v!==null&&v>5?'<span class="hint" style="display:block;margin-bottom:12px" role="status">⚠ Más de 5 votos: revisá esta cantidad ('+v+').</span>':'')+'</label>').join('')+
+ '<div class="estimate"><span>Votos nuevos de esta carga</span><strong>+'+rows.reduce<number>((sum,v)=>sum+(v??0),0)+'</strong></div>'+
+ (pending?'<div class="alert">Hay un envío pendiente de verificar. Reintentá el mismo control: no se duplicará.</div><button id="retry" class="primary" '+(busy?'disabled':'')+'>'+(busy?'Verificando…':'Verificar / reintentar envío')+'</button>':'<button id="review" class="primary" '+(!selected||!rows.some(v=>v!==null)||busy?'disabled':'')+'>Registrar control</button>')+'</section>'+
+ '<section class="card table-card"><p class="eyebrow">TU MESA</p><h2>'+(selected?'Mesa '+esc(tables.find(t=>t.id===selected)?.label):'Seleccioná una mesa')+'</h2><div class="big-total">'+(total?.total??'—')+'</div><p>votos estimados acumulados</p><hr><p><b>Último control</b><br>'+time(total?.last_control??'')+'</p><div class="hint">Cada fila suma votos nuevos. Las cantidades superiores a <b>5</b> se señalan para revisión; el máximo por fila es <b>10</b>.</div></section></div>';
 }
 function historyView(){
  return '<div class="page-head"><div><p class="eyebrow">TRAZABILIDAD</p><h1>Historial de controles</h1><p>'+(profile?.role==='admin'?'Todos los registros y sus correcciones.':'Tus registros individuales. Podés corregirlos durante 15 minutos.')+'</p></div><button class="secondary" id="refresh">Actualizar</button></div><section class="card table-wrap"><table><thead><tr><th>Mesa / hora</th><th>Fiscal</th><th>Votos</th><th>Estado</th><th>Acción</th></tr></thead><tbody>'+
  [...controls].sort((a,b)=>b.created_at.localeCompare(a.created_at)).map(c=>{
  const editable=c.status==='valid'&&(profile?.role==='admin'||(c.user_id===profile?.id&&Date.now()-Date.parse(c.created_at)<15*60*1000&&tables.some(t=>t.id===c.table_id)));
  const logs=audits.filter(a=>a.control_id===c.id);
- return '<tr><td><b>'+esc(tables.find(t=>t.id===c.table_id)?.label??c.table_id)+'</b><small>'+time(c.created_at)+'</small></td><td>'+esc(person(c.user_id))+'</td><td><b>+'+c.votes+'</b></td><td><span class="status '+c.status+'">'+({valid:'Válido',corrected:'Corregido',void:'Anulado'}[c.status])+'</span>'+
+ return '<tr><td><b>'+esc(tables.find(t=>t.id===c.table_id)?.label??c.table_id)+'</b><small>'+time(c.created_at)+'</small></td><td>'+esc(person(c.user_id))+'</td><td><b>+'+c.votes+'</b>'+(c.votes>5?'<small>⚠ Más de 5 votos</small>':'')+'</td><td><span class="status '+c.status+'">'+({valid:'Válido',corrected:'Corregido',void:'Anulado'}[c.status])+'</span>'+
  (c.replaces_id?'<small>Reemplaza '+esc(c.replaces_id.slice(0,8))+'</small>':'')+logs.filter(l=>l.action!=='created').map(l=>'<small>'+esc(l.reason)+' · '+esc(person(l.actor_id))+' · '+time(l.created_at)+'</small>').join('')+'</td><td>'+(editable?'<button class="text-button" data-revise="'+c.id+'">Corregir / anular</button>':'—')+'</td></tr>';
  }).join('')+'</tbody></table>'+(!controls.length?'<div class="empty">Todavía no hay controles registrados.</div>':'')+'</section>';
 }
@@ -80,20 +82,22 @@ function dashboard(){
 }
 function showModal(html:string){const holder=root.querySelector('#modal')!;holder.innerHTML='<dialog aria-labelledby="dialog-title">'+html+'</dialog>';const d=holder.querySelector('dialog')!;d.showModal();d.querySelector<HTMLInputElement>('input,button')?.focus();d.addEventListener('cancel',e=>{if(busy)e.preventDefault();});return d;}
 function confirmControl(){
- if(!selected||remaining===null||busy||pending)return;
- const next={table:selected,remaining:remaining!,request:crypto.randomUUID()};
- try{if(!demo)localStorage.setItem(storageKey(),JSON.stringify(next));}
- catch{error='El navegador no permite guardar el envío pendiente. Habilitá el almacenamiento local antes de registrar.';render();return;}
+ if(!selected||busy||pending||!rows.some(v=>v!==null))return;
+ if(rows.some(v=>v!==null&&(!Number.isInteger(v)||v<0||v>10))){error='Cada fila debe contener de 0 a 10 votos.';render();return;}
+ const entries=rows.filter((v):v is number=>v!==null).map(v=>({remaining:5-v,request:crypto.randomUUID()}));
+ const next={table:selected,...entries[0],entries};
+ try{if(!demo)localStorage.setItem(storageKey(),JSON.stringify(next));}catch{error='Habilitá el almacenamiento local antes de registrar.';render();return;}
  pending=next;void sendControl();
 }
 async function sendControl(){
  if(!pending||busy)return;busy=true;error='';notice='';render();const p={...pending};
+ const entries=p.entries??[{remaining:p.remaining,request:p.request}];
  try{
- let c:Control,accumulated:number|null=null;
- if(demo){c={id:crypto.randomUUID(),table_id:p.table,user_id:profile!.id,remaining:p.remaining,votes:votesFor(p.remaining),created_at:new Date().toISOString(),status:'valid',replaces_id:null,request_id:p.request};controls.push(c);demoTotals();accumulated=totals.find(t=>t.table_id===p.table)?.total??null;}
- else {const {data,error:err}=await db!.rpc('submit_control',{p_table:p.table,p_remaining:p.remaining,p_request:p.request});if(err)throw err;c=data;if(!controls.some(x=>x.id===c.id))controls.push(c);const result=await db!.rpc('table_totals');if(!result.error){totals=result.data;accumulated=totals.find(t=>t.table_id===p.table)?.total??null;}await refresh(false);}
- pending=null;if(!demo)localStorage.removeItem(storageKey());remaining=null;
- notice='🐱 Control registrado · Mesa '+(tables.find(t=>t.id===p.table)?.label??p.table)+' · +'+c.votes+' votos estimados · Acumulado: '+(accumulated??'pendiente de actualizar')+' · '+time(c.created_at);
+ let saved:Control[];
+ if(demo){saved=entries.map(e=>({id:crypto.randomUUID(),table_id:p.table,user_id:profile!.id,remaining:e.remaining,votes:votesFor(e.remaining),created_at:new Date().toISOString(),status:'valid' as const,replaces_id:null,request_id:e.request}));controls.push(...saved);demoTotals();}
+ else{const {data,error:err}=await db!.rpc('submit_batch',{p_table:p.table,p_votes:entries.map(e=>votesFor(e.remaining)),p_requests:entries.map(e=>e.request)});if(err)throw err;saved=data;await refresh(false);}
+ pending=null;if(!demo)localStorage.removeItem(storageKey());remaining=null;rows=Array(6).fill(null);
+ notice='🐱 '+saved.length+' registros guardados · Mesa '+(tables.find(t=>t.id===p.table)?.label??p.table)+' · +'+saved.reduce((sum,c)=>sum+c.votes,0)+' votos · '+time(saved[0].created_at);
  }catch(e){error=message(e);if((e as {code?:string}).code==='P0001'){pending=null;if(!demo)localStorage.removeItem(storageKey());}}
  finally{busy=false;render();}
 }
