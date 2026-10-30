@@ -1,4 +1,6 @@
 # Conteo Universidad
+> UPAU incluye un selector de Conteo electoral / Curso, participantes permanentes y asistencia diaria con permisos separados. Ver [uso y administración del curso](docs/CURSO.md). El contenido siguiente conserva antecedentes de la versión electoral; algunas reglas cambiaron con las migraciones 002–003.
+
 Aplicación independiente para una estimación interna de votos universitarios a partir del consumo de boletas. **No representa el escrutinio oficial.** Proyecto nuevo: no utiliza archivos, usuarios, configuración, datos ni infraestructura de la maratón.
 
 ## Estado del despliegue · 6 de octubre de 2026

@@ -19,6 +19,21 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - name: Preparar navegador de prueba
+        run: npx playwright install --with-deps chromium
+      - name: Comprobar interfaz Curso y Conteo con datos ficticios
+        env:
+          CI: 'true'
+          CONTEO_URL: http://127.0.0.1:4173/conteo-universidad/
+        run: |
+          node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 4173 --strictPort --configLoader native > /tmp/upau-vite.log 2>&1 &
+          VITE_PID=$!
+          trap 'kill "$VITE_PID"' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --silent --fail http://127.0.0.1:4173/conteo-universidad/ > /dev/null; then break; fi
+            sleep 1
+          done
+          node tests/curso-ui-smoke.mjs
       - name: Verificar configuración independiente
         env:
           URL: ${{ vars.VITE_SUPABASE_URL }}

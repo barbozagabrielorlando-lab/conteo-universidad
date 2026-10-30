@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { votesFor, type Profile, type Table, type Control, type Audit } from './domain';
 import './style.css';
+import { Curso, type CursoOperador } from './curso';
 
 const root=document.querySelector<HTMLDivElement>('#app')!;
 const url=import.meta.env.VITE_SUPABASE_URL,key=import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -18,10 +19,16 @@ const storageKey=()=> 'conteo-pending-'+profile!.id;
 let channel:ReturnType<SupabaseClient['channel']>|null=null;
 let generation=0;
 let refreshTimer:ReturnType<typeof setTimeout>|undefined;
+let moduleView:'home'|'electoral'|'curso'='home';
+let sessionIdentity:{id:string;name:string}|null=null;
+let cursoOperador:CursoOperador|null=null;
+let curso:Curso|null=null;
+let accessNotice='';
 const brand='<a class="brand" href="#inicio"><span class="brand-icon">U</span><span>UPAU</span></a>';
 const buttons=(value:number|null)=>'<div class="numbers" role="group" aria-label="Votos estimados">'+[0,1,2,3,4,5,6,7,8,9,10].map(n=>'<button type="button" class="number '+(value===5-n?'chosen':'')+'" aria-pressed="'+(value===5-n)+'" data-number="'+(5-n)+'" '+(busy||pending?'disabled':'')+'>'+n+'</button>').join('')+'</div>';
 const person=(id:string)=>profiles.find(p=>p.id===id)?.display_name??(id===profile?.id?profile.display_name:id.slice(0,8));
 function render(){
+ if(moduleView!=='electoral'){renderShell();return;}
  if(!profile){login();return;}
  const admin=profile.role==='admin';
  if(!admin&&view==='dashboard')view='load';
@@ -30,7 +37,8 @@ function render(){
  '<div class="layout"><aside><p class="eyebrow">JORNADA ELECTORAL</p><nav>'+[['load','Registrar control'],['history','Historial de controles'],...(admin?[['dashboard','Panel general']]:[])].map(([id,label])=>'<button data-view="'+id+'" class="'+(view===id?'active':'')+'">'+label+'</button>').join('')+'</nav><div class="side-note"><span aria-hidden="true">🐱</span><b>Cada control cuenta.</b><p>Revisá las cantidades y registrá los votos nuevos.</p></div></aside><main>'+
  (error?'<div class="alert" role="alert">'+esc(error)+'</div>':'')+(notice?'<div class="success" role="status">'+esc(notice)+'</div>':'')+
  (view==='load'?loadView():view==='history'?historyView():dashboard())+'</main></div><footer><span>Conteo provisorio · uso interno</span><span id="sync">'+esc(sync)+(lastSync?' · '+time(lastSync):'')+'</span></footer><div id="modal"></div>';
- root.querySelector('#logout')!.addEventListener('click',async()=>{if(busy)return;generation++;if(channel&&db)await db.removeChannel(channel);channel=null;if(db)await db.auth.signOut();profile=null;tables=[];controls=[];audits=[];totals=[];pending=null;notice='';error='';demo=false;render();});
+ root.querySelector('#logout')!.addEventListener('click',()=>void logout());
+ const homeButton=document.createElement('button');homeButton.className='text-button';homeButton.textContent='Inicio UPAU';homeButton.onclick=()=>{if(!busy){moduleView='home';render();}};root.querySelector('header')!.append(homeButton);
  root.querySelectorAll<HTMLButtonElement>('[data-view]').forEach(b=>b.onclick=()=>{if(busy)return;view=b.dataset.view!;error='';render();});
  root.querySelectorAll<HTMLButtonElement>('[data-number]').forEach(b=>b.onclick=()=>{remaining=Number(b.dataset.number);render();});
  root.querySelector<HTMLSelectElement>('#table')?.addEventListener('change',e=>{selected=Number((e.target as HTMLSelectElement).value);remaining=null;rows=Array(6).fill(null);notice='';render();});
@@ -40,8 +48,27 @@ function render(){
  root.querySelectorAll<HTMLButtonElement>('[data-revise]').forEach(b=>b.onclick=()=>reviseDialog(b.dataset.revise!));
  root.querySelector('#refresh')?.addEventListener('click',()=>{void refresh();});
 }
+async function logout(){
+ if(busy)return;
+ if(db&&!demo){const {error:err}=await db.auth.signOut();if(err){error=message(err);if(moduleView==='electoral')render();else{accessNotice=error;renderShell();}return;}}
+ generation++;if(channel&&db)await db.removeChannel(channel);channel=null;curso?.dispose();curso=null;sessionIdentity=null;cursoOperador=null;profile=null;tables=[];controls=[];audits=[];profiles=[];totals=[];pending=null;notice='';error='';demo=false;moduleView='home';accessNotice='';render();
+}
+function renderShell(){
+ if(!sessionIdentity){login();return;}
+ if(moduleView==='curso'&&cursoOperador?.active){
+  if(curso)return;
+  root.innerHTML='<header>'+brand+'<div class="user"><span>'+esc(sessionIdentity.name)+'</span><button class="text-button" id="home">Inicio UPAU</button><button class="text-button" id="logout">Salir</button></div></header><main class="curso-main" id="curso-host"></main>';
+  root.querySelector('#home')!.addEventListener('click',()=>{curso?.dispose();curso=null;moduleView='home';render();});root.querySelector('#logout')!.addEventListener('click',()=>void logout());
+  curso=new Curso(root.querySelector('#curso-host')!,db,sessionIdentity.id,demo);curso.start();return;
+ }
+ moduleView='home';
+ root.innerHTML='<header>'+brand+'<div class="user">'+esc(sessionIdentity.name)+'<button id="logout" class="text-button">Salir</button></div></header><main class="module-home"><p class="eyebrow">ESPACIO DEL EQUIPO</p><h1>¿Dónde querés trabajar?</h1><p>Elegí una de las dos secciones de UPAU.</p>'+(demo?'<div class="setup-note">DEMOSTRACIÓN · Información ficticia.</div>':'')+(accessNotice?'<div class="alert" role="alert">'+esc(accessNotice)+'</div>':'')+'<div class="module-grid"><section class="card module-card"><span class="module-icon" aria-hidden="true">▤</span><h2>Conteo electoral</h2><p>La interfaz tradicional de UPAU: carga de votos, historial y seguimiento de mesas.</p>'+(profile?.active?'<button class="primary" id="open-electoral">Entrar al conteo</button>':'<p class="module-locked">Acceso reservado a usuarios electorales autorizados.</p>')+'</section><section class="card module-card"><span class="module-icon" aria-hidden="true">✓</span><h2>Curso</h2><p>Participantes siempre disponibles y asistencia organizada por día.</p>'+(cursoOperador?.active?'<button class="primary" id="open-curso">Entrar al curso</button>':'<p class="module-locked">Tu cuenta aún no tiene acceso al curso. Solicitá la habilitación al administrador.</p>')+'</section></div><p class="module-footnote">Los participantes del curso no necesitan usuario ni contraseña.</p></main>';
+ root.querySelector('#logout')!.addEventListener('click',()=>void logout());
+ root.querySelector('#open-electoral')?.addEventListener('click',()=>{if(!profile?.active)return;moduleView='electoral';view=profile.role==='admin'?'dashboard':'load';render();void refresh();});
+ root.querySelector('#open-curso')?.addEventListener('click',()=>{if(!cursoOperador?.active)return;moduleView='curso';render();});
+}
 function login(){
- root.innerHTML='<header>'+brand+'</header><main class="login"><section class="login-intro"><p class="eyebrow">ELECCIÓN UNIVERSITARIA</p><h1>El conteo de UPAU,<br>en tiempo real.</h1><p>Registrá los votos estimados de tu mesa y acompañá el conteo interno durante la jornada.</p><div class="intro-note">🐱 Cada registro conserva su historial.</div></section><section class="card login-card"><p class="eyebrow">ACCESO DEL EQUIPO</p><h2>Ingresá a tu cuenta</h2><p>Usá el correo y la contraseña que te asignaron.</p><form id="login"><label>Correo electrónico<input name="email" type="email" autocomplete="username" required></label><label>Contraseña<input name="password" type="password" autocomplete="current-password" required minlength="6"></label><button class="primary" '+(!db||busy?'disabled':'')+'>Ingresar</button></form>'+(error?'<p class="alert" role="alert">'+esc(error)+'</p>':'')+(!db?'<div class="setup-note">El proyecto todavía no está conectado a Supabase. Podés explorar una demostración local.</div><button id="demo" class="secondary">Explorar demostración</button>':'')+'</section></main><footer>Estimación provisoria interna. No es el escrutinio oficial.<small style="display:block;margin-top:6px;font-size:10px;opacity:.7">Software Pequeño J</small></footer>';
+ root.innerHTML='<header>'+brand+'</header><main class="login"><section class="login-intro"><p class="eyebrow">CONTEO ELECTORAL Y CURSO</p><h1>Tu equipo,<br>en un mismo lugar.</h1><p>Ingresá para acceder al conteo tradicional de UPAU o registrar la asistencia diaria del curso.</p></section><section class="card login-card"><p class="eyebrow">ACCESO DEL EQUIPO</p><h2>Ingresá a tu cuenta</h2><p>Usá el correo y la contraseña que te asignaron.</p><form id="login"><label>Correo electrónico<input name="email" type="email" autocomplete="username" required></label><label>Contraseña<input name="password" type="password" autocomplete="current-password" required minlength="6"></label><button class="primary" '+(!db||busy?'disabled':'')+'>Ingresar</button></form>'+(error?'<p class="alert" role="alert">'+esc(error)+'</p>':'')+(!db?'<div class="setup-note">Podés explorar una demostración con información ficticia.</div><button id="demo" class="secondary">Explorar demostración</button>':'')+'</section></main><footer>UPAU · Acceso del equipo</footer>';
  root.querySelector('#demo')?.addEventListener('click',startDemo);
  root.querySelector<HTMLFormElement>('#login')!.onsubmit=async e=>{
  e.preventDefault();if(!db||busy)return;busy=true;error='';const form=new FormData(e.currentTarget as HTMLFormElement); const button=root.querySelector<HTMLButtonElement>('.primary')!;button.disabled=true;button.textContent='Ingresando…';
@@ -125,7 +152,7 @@ async function refresh(draw=true){
  if(demo){demoTotals();if(draw&&!busy)render();return;}
  if(!db||!profile||loading)return;loading=true;const g=generation;
  try{
- const {data:p,error:pe}=await db.from('profiles').select('*').eq('id',profile.id).single();if(g!==generation)return;if(pe)throw pe;if(!p.active){profile=null;error='Tu cuenta está deshabilitada. Contactá a administración.';render();return;}profile=p;
+ const {data:p,error:pe}=await db.from('profiles').select('*').eq('id',profile.id).single();if(g!==generation)return;if(pe)throw pe;if(!p.active){profile=null;moduleView='home';accessNotice='Tu acceso electoral está deshabilitado. Contactá a administración.';render();return;}profile=p;
  const [ts,cs,as,ps,res]=await Promise.all([allRows<Table>('electoral_tables'),allRows<Control>('controls'),allRows<Audit>('audit_log'),allRows<Profile>('profiles'),db.rpc('table_totals')]);
  if(res.error)throw res.error;if(g!==generation)return;
  tables=ts;controls=cs;audits=as;profiles=ps;totals=res.data;lastSync=new Date().toISOString();if(!channel)sync='Actualización periódica';
@@ -136,19 +163,26 @@ async function refresh(draw=true){
 }
 async function sessionUser(userId:string){
  if(!db)return;generation++;const g=generation;
- if(profile?.id!==userId){profile=null;tables=[];controls=[];audits=[];profiles=[];totals=[];selected=0;remaining=null;pending=null;notice='';lastSync='';render();}
- const {data,error:err}=await db.from('profiles').select('*').eq('id',userId).single();
+ curso?.dispose();curso=null;moduleView='home';sessionIdentity=null;cursoOperador=null;profile=null;tables=[];controls=[];audits=[];profiles=[];totals=[];selected=0;remaining=null;pending=null;notice='';lastSync='';accessNotice='';
+ if(channel){await db.removeChannel(channel);channel=null;}
+ const [electoralResult,courseResult]=await Promise.all([db.from('profiles').select('*').eq('id',userId).maybeSingle(),db.from('curso_operadores').select('user_id,display_name,role,active').eq('user_id',userId).maybeSingle()]);
  if(g!==generation)return;
- if(err||!data?.active){profile=null;error='Cuenta sin habilitar. Pedí al administrador que active tu usuario y asigne tu mesa.';render();return;}
- profile=data;view=profile!.role==='admin'?'dashboard':'load';error='';
- try{pending=JSON.parse(localStorage.getItem(storageKey())??'null');if(pending){selected=pending.table;remaining=pending.remaining;}}catch{pending=null;}
- await refresh(false);render();
- if(channel)await db.removeChannel(channel);
- channel=db.channel('conteo-'+userId).on('postgres_changes',{event:'*',schema:'public'},()=>{clearTimeout(refreshTimer);refreshTimer=setTimeout(()=>void refresh(),250);}).subscribe(status=>{sync=status==='SUBSCRIBED'?'En vivo':status==='CHANNEL_ERROR'||status==='TIMED_OUT'?'Reconectando · respaldo cada 20 s':'Conectando';const el=root.querySelector('#sync');if(el)el.textContent=sync;});
+ profile=electoralResult.error?null:electoralResult.data?.active?electoralResult.data:null;
+ cursoOperador=courseResult.error?null:courseResult.data?.active?courseResult.data:null;
+ sessionIdentity={id:userId,name:cursoOperador?.display_name??profile?.display_name??'Equipo UPAU'};error='';
+ if(courseResult.error)accessNotice='El curso todavía no está disponible. El acceso electoral conserva sus permisos.';
+ if(!profile&&!cursoOperador&&!accessNotice)accessNotice='Tu cuenta no tiene módulos habilitados. Contactá a administración.';
+ if(profile){
+  try{pending=JSON.parse(localStorage.getItem(storageKey())??'null');if(pending){selected=pending.table;remaining=pending.remaining;}}catch{pending=null;}
+  await refresh(false);if(g!==generation)return;
+  channel=db.channel('conteo-'+userId).on('postgres_changes',{event:'*',schema:'public'},()=>{clearTimeout(refreshTimer);refreshTimer=setTimeout(()=>void refresh(),250);}).subscribe(status=>{sync=status==='SUBSCRIBED'?'En vivo':status==='CHANNEL_ERROR'||status==='TIMED_OUT'?'Reconectando · respaldo cada 20 s':'Conectando';const el=root.querySelector('#sync');if(el)el.textContent=sync;});
+ }
+ render();
 }
 function demoTotals(){totals=tables.map(t=>{const cs=controls.filter(c=>c.table_id===t.id);return {table_id:t.id,total:cs.filter(c=>c.status==='valid').reduce((n,c)=>n+c.votes,0),reported:!!cs.length,last_control:cs.map(c=>c.created_at).sort().at(-1)??null};});sync='Demostración local';lastSync=new Date().toISOString();}
 function startDemo(){
  demo=true;profile={id:'demo-admin',display_name:'Equipo UPAU',role:'admin',active:true};profiles=[profile,{id:'demo-fiscal',display_name:'Lucía · Fiscal',role:'fiscal',active:true}];
+ sessionIdentity={id:profile.id,name:profile.display_name};cursoOperador={user_id:profile.id,display_name:profile.display_name,role:'admin',active:true};moduleView='home';
  tables=Array.from({length:8},(_,i)=>({id:i+1,label:String(i+1).padStart(3,'0'),active:true}));
  controls=Array.from({length:32},(_,i)=>({id:crypto.randomUUID(),table_id:i%6+1,user_id:'demo-fiscal',remaining:i%5,votes:5-i%5,created_at:new Date(Date.now()-(32-i)*240000).toISOString(),status:'valid' as const,replaces_id:null,request_id:crypto.randomUUID()}));audits=[];selected=0;remaining=null;pending=null;view='dashboard';demoTotals();render();
 }
@@ -156,4 +190,4 @@ window.addEventListener('online',()=>void refresh());window.addEventListener('of
 setInterval(()=>{if(profile&&!demo)void refresh();},20000);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&profile)void refresh();});
 render();
-if(db){db.auth.onAuthStateChange((event,session)=>{if(event==='SIGNED_OUT'){generation++;profile=null;render();}else if(session&&(event==='SIGNED_IN'||event==='INITIAL_SESSION'))setTimeout(()=>void sessionUser(session.user.id),0);});}
+if(db){db.auth.onAuthStateChange((event,session)=>{if(event==='SIGNED_OUT'){generation++;curso?.dispose();curso=null;profile=null;sessionIdentity=null;cursoOperador=null;tables=[];controls=[];audits=[];profiles=[];totals=[];pending=null;moduleView='home';if(channel){void db!.removeChannel(channel);channel=null;}render();}else if(session&&(event==='SIGNED_IN'||event==='INITIAL_SESSION'))setTimeout(()=>void sessionUser(session.user.id),0);});}
