@@ -20,6 +20,7 @@ try{
  await page.getByRole('button',{name:'Guardar participante',exact:true}).click();
  await page.getByRole('heading',{name:'Pérez, Ana'}).waitFor();
  const day=await page.getByLabel('Fecha de asistencia').inputValue();
+ assert.equal(await page.getByLabel('Fecha de asistencia').getAttribute('max'),null);
  await page.getByRole('button',{name:'Confirmar asistencia de Ana Pérez',exact:true}).click();
  await assert.doesNotReject(()=>page.getByRole('button',{name:'Quitar asistencia de Ana Pérez',exact:true}).waitFor());
  await page.getByLabel('Fecha de asistencia').fill('2026-01-01');await page.getByLabel('Fecha de asistencia').dispatchEvent('change');
@@ -28,9 +29,15 @@ try{
  await page.getByRole('button',{name:'Quitar asistencia de Ana Pérez',exact:true}).waitFor();
  await page.getByRole('button',{name:'Quitar asistencia de Ana Pérez',exact:true}).click();
  await page.getByRole('button',{name:'Confirmar asistencia de Ana Pérez',exact:true}).waitFor();
+ const tomorrow=new Date(day+'T12:00:00Z');tomorrow.setUTCDate(tomorrow.getUTCDate()+1);const future=tomorrow.toISOString().slice(0,10);
+ await page.getByLabel('Fecha de asistencia').fill(future);await page.getByLabel('Fecha de asistencia').dispatchEvent('change');
+ await page.getByRole('heading',{name:'Pérez, Ana'}).waitFor();await page.getByRole('button',{name:'Confirmar asistencia de Ana Pérez',exact:true}).waitFor();
+ await page.getByRole('button',{name:'Confirmar asistencia de Ana Pérez',exact:true}).click();await page.getByRole('button',{name:'Quitar asistencia de Ana Pérez',exact:true}).waitFor();
  await page.reload();await page.getByRole('button',{name:'Explorar demostración'}).click();await page.getByRole('button',{name:'Entrar al curso'}).click();
  assert.equal(await page.getByLabel('Fecha de asistencia').inputValue(),day);
  await page.getByRole('heading',{name:'Pérez, Ana'}).waitFor();await page.getByRole('button',{name:'Quitar asistencia de Ana Pérez',exact:true}).waitFor();
+ await page.getByLabel('Fecha de asistencia').fill(future);await page.getByLabel('Fecha de asistencia').dispatchEvent('change');await page.getByRole('button',{name:'Quitar asistencia de Ana Pérez',exact:true}).waitFor();
+ await page.getByRole('button',{name:'Inicio UPAU',exact:true}).click();await page.getByRole('button',{name:'Entrar al curso',exact:true}).click();assert.equal(await page.getByLabel('Fecha de asistencia').inputValue(),day);await page.getByRole('button',{name:'Quitar asistencia de Ana Pérez',exact:true}).waitFor();
  await page.getByRole('button',{name:'Agregar participante',exact:true}).click();await page.getByLabel('Nombre',{exact:true}).fill('Duplicada');await page.getByLabel('Apellido',{exact:true}).fill('Otra');await page.getByLabel('DNI (opcional)').fill('12345678');await page.getByRole('button',{name:'Guardar participante',exact:true}).click();await page.getByText('Ya existe un participante con ese DNI.',{exact:true}).waitFor();await page.getByRole('button',{name:'Cancelar',exact:true}).click();
  await page.getByRole('button',{name:'Editar a Ana Pérez',exact:true}).click();await page.getByLabel('Nombre',{exact:true}).fill('Ana María');await page.getByRole('button',{name:'Guardar participante',exact:true}).click();await page.getByRole('heading',{name:'Pérez, Ana María'}).waitFor();
  await page.setViewportSize({width:390,height:844});

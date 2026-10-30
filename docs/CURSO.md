@@ -8,7 +8,7 @@ Después del ingreso con la cuenta del operador, UPAU ofrece dos tarjetas: Conte
 
 En Curso, agregar nombre y apellido del participante; DNI y teléfono son opcionales. El DNI evita duplicaciones cuando se informa. Los participantes no son cuentas de Auth y no necesitan contraseña. Las personas sin DNI no tienen deduplicación automática por nombre: revisar mediante el buscador antes del alta.
 
-La lista permanece en PostgreSQL y se reutiliza cada día. Elegir la fecha, pulsar “Marcar presente” y esperar la confirmación. “✓ Presente” permite quitar una marca equivocada. La operación modifica únicamente la fecha seleccionada. Una persona sin marca no está confirmada como presente; no se registra automáticamente una ausencia. La fecha inicial usa horario argentino y no se aceptan fechas futuras.
+La lista permanece en PostgreSQL y se reutiliza cada día, también al consultar fechas futuras. Elegir la fecha, pulsar “Marcar presente” y esperar la confirmación. “✓ Presente” permite quitar una marca equivocada. La operación modifica únicamente la fecha seleccionada. Una persona sin marca no está confirmada como presente; no se registra automáticamente una ausencia. Se permiten fechas pasadas y futuras. Cada vez que se abre la web o se entra nuevamente a Curso, la fecha inicial es hoy en horario argentino; la última fecha elegida no se guarda como fecha inicial.
 
 Se puede consultar o corregir un día anterior y editar los datos de una persona sin modificar sus asistencias. Todos los operadores habilitados del curso comparten acceso a la lista y a las asistencias; no hay comisiones separadas en esta primera versión. La lista muestra 30 personas por página y busca nombre, apellido o DNI en servidor.
 

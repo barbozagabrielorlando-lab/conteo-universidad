@@ -23,6 +23,7 @@ beforeAll(async()=>{
  await asUser(electoral,`select * from submit_control(1,2,'${randomUUID()}')`);
  baseline=(await owner(snapshot)).rows;
  await db.exec(readFileSync(new URL('../supabase/migrations/004_curso.sql',import.meta.url),'utf8'));
+ await db.exec(readFileSync(new URL('../supabase/migrations/20261030200159_curso_fechas_futuras.sql',import.meta.url),'utf8'));
  await db.exec(`insert into curso_operadores values('${operador}','Operador','operador',true),('${inactivo}','Inactivo','operador',false),('${admin}','Admin curso','admin',true);`);
 },30000);
 afterAll(async()=>db?.close());
@@ -48,13 +49,15 @@ it('mantiene asistencias separadas por día y permite corregir sin duplicar',asy
  const rows=(await asUser(admin,'select fecha::text,presente from curso_asistencias order by fecha')).rows;
  expect(rows).toEqual([{fecha:'2026-01-01',presente:true},{fecha:'2026-01-02',presente:false}]);
  expect((await asUser(admin,"select * from curso_auditoria where accion='asistencia'")).rows).toHaveLength(3);
- await expect(asUser(operador,mark('2999-01-01',true))).rejects.toThrow(/futura/);
+ await asUser(operador,mark('2999-01-01',true));
+ expect((await asUser(operador,"select fecha::text,presente from curso_asistencias where fecha='2999-01-01'")).rows).toEqual([{fecha:'2999-01-01',presente:true}]);
+ await expect(asUser(operador,`select * from curso_marcar_asistencia('${participante}',null,true)`)).rejects.toThrow(/fecha válida/);
 });
 it('detecta edición concurrente en vez de sobrescribir y conserva asistencias',async()=>{
  const version=(await asUser(operador,`select updated_at::text from curso_participantes where id='${participante}'`)).rows[0] as {updated_at:string};
  await asUser(operador,`select * from curso_guardar_participante('${participante}','Ana María','Pérez','12345678','456','${version.updated_at}')`);
  await expect(asUser(operador,`select * from curso_guardar_participante('${participante}','Ana','Pérez','12345678','789','${version.updated_at}')`)).rejects.toThrow(/Otro operador/);
- expect((await asUser(operador,'select * from curso_asistencias')).rows).toHaveLength(2);
+ expect((await asUser(operador,'select * from curso_asistencias')).rows).toHaveLength(3);
 });
 it('revoca inmediatamente la consulta y escritura al deshabilitar el operador',async()=>{
  await owner(`update curso_operadores set active=false where user_id='${operador}'`);
