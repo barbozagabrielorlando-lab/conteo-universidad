@@ -1,4 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import {descargarExcel,fechasSemana,prepararPlanilla} from './exportar-asistencia';
+import {leerDatosCurso} from './curso-export-data';
 
 export type CursoOperador={user_id:string;display_name:string;role:'admin'|'operador';active:boolean};
 type Participante={id:string;nombre:string;apellido:string;dni:string|null;telefono:string;created_at:string;updated_at:string;created_by:string};
@@ -49,7 +51,7 @@ export class Curso {
  private render(){
   if(this.disposed)return;
   const disabled=this.loading||this.busy;
-  this.host.innerHTML=`<div class="page-head"><div><p class="eyebrow">PARTICIPANTES Y ASISTENCIA</p><h1>Curso</h1><p>La lista se conserva. Elegí el día y confirmá quiénes asistieron.</p></div><button class="primary" id="curso-nuevo" ${disabled?'disabled':''}>Agregar participante</button></div>
+  this.host.innerHTML=`<div class="page-head"><div><p class="eyebrow">PARTICIPANTES Y ASISTENCIA</p><h1>Curso</h1><p>La lista se conserva. Elegí el día y confirmá quiénes asistieron.</p></div><div class="curso-page-actions"><button class="secondary" id="curso-exportar" ${disabled?'disabled':''}>Exportar a Excel</button><button class="primary" id="curso-nuevo" ${disabled?'disabled':''}>Agregar participante</button></div></div>
    ${this.demo?'<div class="setup-note">DEMOSTRACIÓN · Datos ficticios guardados solo en este navegador. No usar para asistencia real.</div>':''}
    ${this.error?`<div class="alert" role="alert">${esc(this.error)}</div>`:''}${this.notice?`<div class="success" role="status">${esc(this.notice)}</div>`:''}
    <section class="card curso-toolbar"><label>Fecha de asistencia<input id="curso-fecha" type="date" value="${this.fecha}" max="${fechaArgentina()}" ${disabled?'disabled':''}></label><form id="curso-buscar"><label>Buscar participante<input id="curso-query" type="search" maxlength="100" value="${esc(this.buscar)}" placeholder="Nombre, apellido o DNI" ${disabled?'disabled':''}></label><button class="secondary" ${disabled?'disabled':''}>Buscar</button></form><button class="secondary" id="curso-refresh" ${disabled?'disabled':''}>Actualizar</button></section>
@@ -57,6 +59,7 @@ export class Curso {
    <section class="card"><div class="asistencia-list">${this.participantes.map(p=>{const present=this.asistencias.some(a=>a.participante_id===p.id&&a.presente);return `<article class="asistencia-row"><div><h2>${esc(p.apellido)}, ${esc(p.nombre)}</h2><p>${p.dni?'DNI '+esc(p.dni):'Sin DNI registrado'}${p.telefono?' · '+esc(p.telefono):''}</p></div><div class="asistencia-actions"><button class="text-button" data-edit="${p.id}" ${disabled||!this.ready?'disabled':''}>Editar<span class="sr-only"> a ${esc(p.nombre)} ${esc(p.apellido)}</span></button><button class="attendance-button ${present?'is-present':''}" aria-pressed="${present}" data-attend="${p.id}" aria-label="${present?'Quitar asistencia de':'Confirmar asistencia de'} ${esc(p.nombre)} ${esc(p.apellido)}" ${disabled||!this.ready?'disabled':''}>${present?'✓ Presente':'Marcar presente'}</button></div></article>`;}).join('')}${this.ready&&!this.participantes.length?`<div class="empty">${this.buscar?'No hay participantes con esa búsqueda.':'Todavía no hay participantes. Agregá el primero para comenzar.'}</div>`:''}</div>
    <div class="curso-pagination"><button class="secondary" id="curso-prev" ${disabled||this.page===0?'disabled':''}>Anterior</button><span>Página ${this.page+1} de ${Math.max(1,Math.ceil(this.total/this.size))}</span><button class="secondary" id="curso-next" ${disabled||(this.page+1)*this.size>=this.total?'disabled':''}>Siguiente</button></div></section><div id="curso-modal"></div>`;
   this.host.querySelector('#curso-nuevo')!.addEventListener('click',()=>this.edit());
+  this.host.querySelector('#curso-exportar')!.addEventListener('click',()=>this.exportar());
   this.host.querySelector<HTMLInputElement>('#curso-fecha')!.onchange=e=>{const date=(e.target as HTMLInputElement).value;if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||date>fechaArgentina()){this.error='Elegí una fecha válida, no futura.';this.render();return;}this.fecha=date;this.notice='';void this.load();};
   this.host.querySelector<HTMLFormElement>('#curso-buscar')!.onsubmit=e=>{e.preventDefault();this.buscar=this.host.querySelector<HTMLInputElement>('#curso-query')!.value.trim();this.page=0;void this.load();};
   this.host.querySelector('#curso-refresh')!.addEventListener('click',()=>void this.load());
@@ -75,6 +78,38 @@ export class Curso {
    this.notice=presente?'Asistencia confirmada.':'Marca de asistencia quitada.';
   }catch(e){this.error=fallo(e);this.busy=false;this.ready=false;this.render();return;}
   this.busy=false;await this.load();
+ }
+ private exportar(){
+  if(this.busy||this.loading)return;
+  const storageKey='upau-planilla-opciones-'+this.userId;
+  let options:{curso:string;lugar:string;horario:string}={curso:'Sublimación',lugar:'Comité Capital',horario:'18 a 20'};
+  try{const saved=JSON.parse(localStorage.getItem(storageKey)??'null');if(saved&&typeof saved.curso==='string'&&typeof saved.lugar==='string'&&typeof saved.horario==='string')options=saved;}catch{/* Preferencias opcionales: la exportación no depende del almacenamiento local. */}
+  let fechas=fechasSemana(this.fecha);let saving=false;
+  this.host.querySelector('#curso-modal')!.innerHTML=`<dialog class="export-dialog" aria-labelledby="export-title"><h2 id="export-title">Exportar planilla de asistencia</h2><p>Incluye todos los participantes. Las asistencias confirmadas se marcan con P y las demás celdas quedan vacías.</p><form id="export-form"><label>Curso<input name="curso" required maxlength="120" value="${esc(options.curso)}"></label><label>Lugar<input name="lugar" required maxlength="160" value="${esc(options.lugar)}"></label><label>Horario<input name="horario" required maxlength="80" value="${esc(options.horario)}"></label><fieldset class="export-dates"><legend>Fechas de clase</legend><div id="export-fechas"></div><button type="button" class="secondary" id="export-add-date">Agregar fecha</button></fieldset><p id="export-error" role="alert"></p><div class="actions"><button type="button" class="secondary" id="export-cancel">Cancelar</button><button type="submit" class="primary" id="export-download">Descargar Excel</button></div></form></dialog>`;
+  const dialog=this.host.querySelector<HTMLDialogElement>('dialog')!;
+  const readDates=()=>{fechas=Array.from(dialog.querySelectorAll<HTMLInputElement>('[data-export-date]'),el=>el.value);};
+  const drawDates=()=>{
+   dialog.querySelector('#export-fechas')!.innerHTML=fechas.map((date,i)=>`<div class="export-date-row"><label>Clase ${i+1}<input type="date" required data-export-date="${i}" value="${date}"></label><button type="button" class="text-button" data-remove-date="${i}" aria-label="Quitar fecha de clase ${i+1}" ${fechas.length===1?'disabled':''}>Quitar</button></div>`).join('');
+   dialog.querySelector<HTMLButtonElement>('#export-add-date')!.disabled=fechas.length>=31;
+   dialog.querySelectorAll<HTMLButtonElement>('[data-remove-date]').forEach(button=>button.onclick=()=>{readDates();fechas.splice(Number(button.dataset.removeDate),1);drawDates();});
+  };
+  drawDates();dialog.showModal();dialog.querySelector<HTMLInputElement>('input')!.focus();
+  dialog.addEventListener('cancel',e=>{if(saving)e.preventDefault();});
+  dialog.querySelector('#export-cancel')!.addEventListener('click',()=>{if(!saving)dialog.close();});
+  dialog.querySelector('#export-add-date')!.addEventListener('click',()=>{readDates();const last=fechas.at(-1);const next=last?new Date(last+'T12:00:00Z'):new Date(this.fecha+'T12:00:00Z');next.setUTCDate(next.getUTCDate()+1);fechas.push(Number.isNaN(next.getTime())?this.fecha:next.toISOString().slice(0,10));drawDates();});
+  dialog.querySelector<HTMLFormElement>('form')!.onsubmit=async e=>{
+   e.preventDefault();if(saving)return;readDates();
+   const form=new FormData(e.currentTarget as HTMLFormElement),err=dialog.querySelector('#export-error')!;
+   try{
+    const input=prepararPlanilla({curso:String(form.get('curso')).trim(),lugar:String(form.get('lugar')).trim(),horario:String(form.get('horario')).trim(),fechas,participantes:[],asistencias:[]});
+    saving=true;this.busy=true;err.textContent='';dialog.querySelectorAll<HTMLInputElement|HTMLButtonElement>('input,button').forEach(el=>el.disabled=true);dialog.querySelector('#export-download')!.textContent='Preparando Excel…';
+    const data=this.demo?{participantes:[...this.demoRows],asistencias:this.demoAttendance.filter(a=>input.fechas.includes(a.fecha))}:await leerDatosCurso(this.db!,this.userId,input.fechas);
+    if(this.disposed)return;
+    descargarExcel({...input,...data});
+    try{localStorage.setItem(storageKey,JSON.stringify({curso:input.curso,lugar:input.lugar,horario:input.horario}));}catch{/* Guardar preferencias es opcional. */}
+    dialog.close();this.notice=`Excel descargado: ${data.participantes.length} participantes y ${input.fechas.length} fechas de clase.`;this.busy=false;this.render();
+   }catch(e){saving=false;this.busy=false;err.textContent=fallo(e);dialog.querySelectorAll<HTMLInputElement|HTMLButtonElement>('input,button').forEach(el=>el.disabled=false);dialog.querySelector('#export-download')!.textContent='Descargar Excel';dialog.querySelector<HTMLButtonElement>('#export-add-date')!.disabled=fechas.length>=31;dialog.querySelectorAll<HTMLButtonElement>('[data-remove-date]').forEach(el=>el.disabled=fechas.length===1);}
+  };
  }
  private edit(p?:Participante){
   if(this.busy)return;

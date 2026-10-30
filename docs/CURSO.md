@@ -14,6 +14,14 @@ Se puede consultar o corregir un día anterior y editar los datos de una persona
 
 ## Archivos y seguridad
 
+### Exportar asistencia a Excel
+
+En Curso, pulsar **Exportar a Excel**. El formulario permite editar curso, lugar, horario y de 1 a 31 fechas de clase. Propone de lunes a viernes de la semana de la fecha seleccionada, y permite agregar o quitar fechas. Las columnas se ordenan cronológicamente. Las preferencias de curso/lugar/horario se recuerdan solo en ese navegador para el operador actual.
+
+La descarga es un archivo `.xlsx` con título “Planilla de Asistencia”, datos del curso, número de fila, nombre y apellido, teléfono y una columna por clase. “P” indica asistencia confirmada; las celdas vacías no declaran ausencia. Incluye al menos 30 filas, o todas las necesarias. Los teléfonos se guardan como texto. Las fechas son valores de fecha de Excel. Está preparado para impresión en A4 con encabezados repetidos.
+
+Se exportan todos los participantes autorizados, sin limitarse al buscador ni a la página visible, y solo las asistencias de las fechas elegidas. Las consultas usan la sesión y RLS existentes; se vuelve a comprobar la habilitación del operador antes de descargar. Un error interrumpe la descarga en lugar de generar una lista parcial. La generación ocurre en el navegador y no transmite la planilla a servicios externos. No se modifica ninguna tabla ni política.
+
 - `src/curso.ts`: pantalla y operaciones del curso.
 - `src/main.ts`: selector de módulos y sesión; conserva el flujo electoral.
 - `supabase/migrations/004_curso.sql`: tablas y RPC nuevas. No modifica tablas, perfiles ni funciones electorales.

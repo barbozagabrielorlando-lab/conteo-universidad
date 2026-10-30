@@ -1,6 +1,7 @@
 import {chromium} from '@playwright/test';
 import assert from 'node:assert/strict';
 import {mkdirSync} from 'node:fs';
+import {readFile} from 'node:fs/promises';
 const out=process.env.CONTEO_SCREENSHOTS;
 if(out)mkdirSync(out,{recursive:true});
 const browser=await chromium.launch(process.env.CI?{headless:true}:{channel:'msedge',headless:true});
@@ -35,9 +36,16 @@ try{
  await page.setViewportSize({width:390,height:844});
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth),false);
  if(out)await page.screenshot({path:out+'/upau-curso-movil.png',fullPage:true});
+ await page.getByLabel('Buscar participante').fill('SIN COINCIDENCIAS');await page.getByRole('button',{name:'Buscar',exact:true}).click();await page.getByText('No hay participantes con esa búsqueda.',{exact:true}).waitFor();
+ await page.getByRole('button',{name:'Exportar a Excel',exact:true}).click();
+ await page.getByLabel('Curso',{exact:true}).fill('Sublimación');
+ for(let i=5;i>=2;i--)await page.getByRole('button',{name:'Quitar fecha de clase '+i,exact:true}).click();
+ await page.getByLabel('Clase 1',{exact:true}).fill(day);
+ const downloadPromise=page.waitForEvent('download');await page.getByRole('button',{name:'Descargar Excel',exact:true}).click();const download=await downloadPromise;
+ assert.match(download.suggestedFilename(),/^Asistencia-Sublimacion-.*\.xlsx$/);const excel=await readFile(await download.path());assert.equal(excel.subarray(0,2).toString(),'PK');const excelText=excel.toString('utf8');assert.ok(excelText.includes('Ana María Pérez'),'La búsqueda no debe recortar la exportación');assert.ok(excelText.includes('Planilla de Asistencia'));assert.match(excelText,/<c r="D8"[^>]*>.*?<t[^>]*>P<\/t>/);
  await page.getByRole('button',{name:'Inicio UPAU',exact:true}).click();await page.getByRole('button',{name:'Entrar al conteo',exact:true}).click();await page.getByRole('heading',{name:'Panel general'}).waitFor();
  await page.getByRole('button',{name:'Registrar control',exact:true}).click();await page.locator('#table').selectOption('7');await page.locator('[data-row="0"]').selectOption('3');await page.getByRole('button',{name:'Registrar control',exact:true}).last().click();await page.getByRole('status').filter({hasText:'1 registros guardados'}).waitFor();
  await page.getByRole('button',{name:'Historial de controles',exact:true}).click();await page.getByRole('button',{name:'Corregir / anular'}).first().click();await page.locator('#revision-kind').selectOption('void');await page.locator('#reason').fill('Prueba de conservación electoral');await page.getByRole('button',{name:'Confirmar cambio',exact:true}).click();await page.getByText('Anulado',{exact:true}).waitFor();
  assert.deepEqual(errors,[]);
- console.log('OK: selector, participantes persistentes en demo, asistencia por fecha, duplicados, edición, móvil y regresión de carga/anulación electoral.');
+ console.log('OK: selector, participantes persistentes, asistencia por fecha, duplicados, edición, móvil, descarga XLSX completa con asistencia y regresión electoral.');
 }finally{await browser.close();}
